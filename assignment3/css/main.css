@@ -1,0 +1,6 @@
+
+svg {
+	width: 50%;
+	height: 0;
+	padding-top: calc(50% * 9 / 16);
+}
