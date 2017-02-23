@@ -1,15 +1,43 @@
+body, select {
+	font-size: 16pt;
+}
+
+body, text {
+	font-family: 'Josefin Sans', sans-serif;
+	font-weight: 600;
+}
+
+text {
+	font-size: 11pt;
+}
+
+circle, rect {
+	stroke: #000;
+	stroke-width: 2px;
+}
+
+circle:hover {
+	r: 9;
+}
+
+#header {
+	width: 100%;
+	text-align: center;
+}
+
 #hud {
 	flex: 0 0 15%;
 	border: 2px solid black;
 	padding: 10px;
 }
 
-input, select {
+input, label, select {
 	width: 100%;
 }
 
-dropdown {
-	height: 200px;
+#information div {
+	border-bottom: 1px solid black;
+	padding: 10px 5px 10px 5px;
 }
 
 #master-wrapper {
@@ -26,6 +54,7 @@ dropdown {
 .states {
 	fill: #ccc;
 	stroke: #fff;
+	stroke: #000;
 }
 
 .state-borders {

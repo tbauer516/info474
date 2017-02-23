@@ -5,16 +5,6 @@
 let dataset = [];
 let airport = [];
 let airline = [];
-d3.csv('data/tsa-claims-2002-2015.csv', (data) => {
-	dataset = data;
-	
-	aggregateData(data);
-	initializeDropdowns(data);
-
-	// make both views with all the data initially
-	makeBar(airline);
-	makeMap(airport);
-});
 
 // ======================================
 // set up actual charts and axis
@@ -24,9 +14,12 @@ d3.csv('data/tsa-claims-2002-2015.csv', (data) => {
 const win = $(window);
 const winWidth = win.width() - 20;
 const infoBox = $('#information');
+infoBox.css('display', 'none');
+const transDur = 500;
 
 let leftMargin = {top: 20, right: 20, bottom: 40, left: 60}
 let svgWidth, svgHeight, gWidth, gHeight;
+let projection, path, legend;
 
 let body = d3.select('body')
 	.style('margin', '0px');
@@ -50,46 +43,23 @@ let svgRight = masterWrapper.append('div')
 	.attr('class', 'svg-wrapper')
 	.append('svg');
 
-// ratio is 360 / 620 for path
-// width 835, scale 1070
-// ^ magic numbers specific to the svg map
-let projection = d3.geoAlbersUsa()
-	.scale(svgWidth / 835 * 1070 - 2)
-	.translate([svgWidth / 2, svgWidth * 360 / 620 / 2 + 30]);
-
-let path = d3.geoPath()
-	.projection(projection);
-
-d3.json("data/us.json", function(error, us) {
-	svgRight.append("path")
-		.attr("class", "states")
-		.datum(topojson.feature(us, us.objects.states))
-		.attr("d", path);
-});
-
-
-// ======================================
-// Once Document is ready
-// ======================================
-$(() => {
-	$('select').on('change', () => {
-		filter();
-	});
-});
-
 
 // ======================================
 // Functions (doc hierarchy does not matter)
 // ======================================
 
-let makeBar = (data) => {
+let makeBar = (dataset) => {
 	let columnName = 'avgCloseAmount';
+	let data = dataset || [{'key': 'none', 'value': {'avgCloseAmount': 0}}];
+	let trans = d3.transition()
+		.duration(500)
+		.ease(d3.easeLinear);
 
 	let x = d3.scaleBand()
 		.domain(['Alaska Airlines', 'American Airlines', 'Delta Air Lines', 'Southwest Airlines', 'Virgin America'])
 		.range([0, gWidth])
-		.paddingInner(0.1)
-		.paddingOuter(2);
+		.paddingInner(0.2)
+		.paddingOuter(1);
 
 	data = data.filter((d) => { return x(d.key) != undefined; });
 
@@ -106,6 +76,9 @@ let makeBar = (data) => {
 	}
 	xAxis.call(d3.axisBottom(x));
 
+	svgLeft.select('g.xAxis').selectAll('text')
+		.attr('font-size', '11pt');
+
 	let yAxis = svgLeft.select('g.yAxis');
 	if(yAxis.empty()) {
 		yAxis = svgLeft
@@ -121,9 +94,7 @@ let makeBar = (data) => {
 			.text('Average Cost to Close ($)');
 	}
 	yAxis
-		.transition()
-		.duration(500)
-		.ease(d3.easeLinear)
+		.transition(trans)
 		.call(d3.axisLeft(y));
 
 	let rect = gLeft.selectAll('rect')
@@ -131,45 +102,123 @@ let makeBar = (data) => {
 
 	rect.enter()
 		.append('rect')
-		.attr('fill', 'red')
+		.attr('fill', '#ca0020')
 		.attr('width', x.bandwidth())
 		.attr('x', (d) => { return x(d.key); })
 		.attr('height', 0)//(d) => { return gHeight - y(d.value[columnName]); })
 		.attr('y', gHeight)//(d) => { return gHeight -(gHeight - y(d.value[columnName])); });
 	.merge(rect)
-		.transition()
-		.duration(500)
-		.ease(d3.easeLinear)
+		.transition(trans)
 		.attr('height', (d) => { return gHeight - y(d.value[columnName]); })
 		.attr('y', (d) => { return gHeight -(gHeight - y(d.value[columnName])); });
 
 	rect
 		.exit()
-		.transition()
-		.duration(500)
-		.ease(d3.easeLinear)
+		.transition(trans)
 		.attr('height', 0)
 		.attr('y', gHeight)
 		.remove();
+}
 
-	// console.log(data);
-	// console.log(y(+data[0].value.closeAmount));
+let makeMapProjection = () => {
+	// ratio is 360 / 620 for path
+	// width 835, scale 1070
+	// ^ magic numbers specific to the svg map
+	projection = d3.geoAlbersUsa()
+		.scale(svgWidth / 835 * 1070 - 2)
+		.translate([svgWidth / 2, svgWidth * 360 / 620 / 2 + 30]);
+
+	path = d3.geoPath()
+		.projection(projection);
+
+	d3.json("data/us.json", function(error, us) {
+		svgRight.append("path")
+			.attr("class", "states")
+			.datum(topojson.feature(us, us.objects.states))
+			.attr("d", path);
+	});
+
+	legend = svgRight.append('g')
+		.attr('class', 'legend');
 }
 
 let makeMap = (data) => {
-	// console.log(data);
-	// console.log(data[0]);
-	// console.log(projection([data[0].Longitude, data[0].Latitude]));
-	svgRight.selectAll('circle')
-		.data(data).enter()
+	let mean = d3.mean(data, (d) => { return +d.value.avgCloseAmount; });
+	let std = d3.deviation(data, (d) => { return +d.value.avgCloseAmount; });
+
+	let domainArr = [prettyify(mean - (.13 * std)), prettyify(mean - (.1 * std)), prettyify(mean + (.001 * std)), prettyify(mean + (.15 * std))];
+
+	let color = d3.scaleThreshold()
+		// .domain([mean - .5 * std, mean - .1 * std, mean + .1 * std, mean + .5 * std])
+		.domain(domainArr)
+		// .domain([mean - (1.65 * std), mean - (.39 * std), mean + (.39 * std), mean + (1.65 * std)])
+		// .domain([mean - (1.28 * std), mean - (.26 * std), mean + (.26 * std), mean + (1.28 * std)])
+		.range(['#0571b0', '#92c5de', '#f7f7f7', '#f4a582', '#ca0020'])
+
+
+	let circle = svgRight.selectAll('circle')
+		.data(data);
+
+	let duration = 250;
+
+	let trans = d3.transition()
+		.duration(duration)
+		.ease(d3.easeLinear);
+
+	circle.enter()
 		.append('circle')
+		.attr('opacity', '0.8')
+	.merge(circle)
+		.on('mouseover', showInfo)
+		.on('mouseout', hideInfo)
+		.transition(trans)
+		.attr('r', 0)
+		.transition()
+		.duration(0)
 		.attr('cx', (d) => { let proj = projection([d.value.longitude, d.value.latitude]); return proj != null ? proj[0] : null; })
 		.attr('cy', (d) => { let proj = projection([d.value.longitude, d.value.latitude]); return proj != null ? proj[1] : null; })
-		.attr('r', '5px')
-		.attr('fill', 'red')
-		.attr('opacity', '0.6')
-		.on('mouseover', showInfo)
-		.on('mouseout', hideInfo);
+		.attr('fill', (d) => { return color(+d.value.avgCloseAmount); })
+		.transition()
+		.duration(duration)
+		.attr('r', 5);
+
+	circle
+		.exit()
+		.transition(trans)
+		.attr('r', 0)
+		.remove();
+
+	let colors = color.range();
+	let threshes = color.domain();
+	let rectInfo = { width: 30, height: 30 };
+
+	let group = svgRight.select('g.legend')
+		.attr('transform', 'translate(' + (svgWidth - (colors.length * rectInfo.width * 1.85)) + ', 0)');
+
+	group
+		.selectAll('rect')
+		.data(colors)
+		.enter().append('rect')
+		.attr('x', (d, i) => { return i * rectInfo.width + i * 10; })
+		.attr('y', 	0)
+		.attr('fill', (d, i) => { return colors[i]; })
+		.attr('width', rectInfo.width)
+		.attr('height', rectInfo.height);
+
+	let legendText = group
+		.selectAll('text')
+		.data(threshes);
+
+	legendText.exit().remove();
+
+	legendText
+		.enter()
+		.append('text')
+		.merge(legendText)
+		.attr('x', (d, i) => { return (i + 1) * rectInfo.width - 10 + i * 10; })
+		.attr('y', (d) => { return rectInfo.height; })
+		.attr('dy', 14)
+		.text((d, i) => { return Math.round(+threshes[i]); })
 }
 
 let aggregateData = (data) => {
@@ -207,35 +256,59 @@ let aggregateData = (data) => {
 }
 
 let filter = () => {
+
 	let localData = dataset;
+
 	let claimFilter = $('#claimFilter').val();
-	if (claimFilter != 'none')
+	if (claimFilter != 'all')
 		localData = localData.filter((d) => { return d.claimType == claimFilter; });
 	let dispositionFilter = $('#dispositionFilter').val();
 	if (dispositionFilter != 'all')
 		localData = localData.filter((d) => { return d.disposition == dispositionFilter; });
+	let itemFilter = $('#itemFilter').val();
+	if (itemFilter != 'all')
+		localData = localData.filter((d) => { return d.itemCategory.indexOf(itemFilter) != -1; });
+
 	aggregateData(localData);
-	console.log(airline);
 	makeBar(airline);
 	makeMap(airport);
 }
 
 let initializeDropdowns = (data) => {
 	d3.select('#claimFilter').selectAll('option')
-    	.data(d3.map(data, (d) => { return d.claimType != '' ? d.claimType : 'Unknown'; }).keys())
+    	.data(d3.map(data, (d) => { return d.claimType; }).keys())
     	.enter()
     	.append('option')
     	.text((d) => { return d; })
     	.attr('value', (d) => { return d; })
-    	.style('display', (d) => { return ['Bus Terminal', 'Unknown'].indexOf(d) != -1 ? 'none' : null; });
+    	.style('display', (d) => { return ['', 'Bus Terminal'].indexOf(d) != -1 ? 'none' : null; });
 
     d3.select('#dispositionFilter').selectAll('option')
-    	.data(d3.map(data, (d) => { return d.disposition != '' ? d.disposition : 'Unknown'; }).keys())
+    	.data(d3.map(data, (d) => { return d.disposition; }).keys())
     	.enter()
     	.append('option')
     	.text((d) => { return d; })
     	.attr('value', (d) => { return d; })
-    	.style('display', (d) => { return ['Unknown', 'Pending response from claimant'].indexOf(d) != -1 ? 'none' : null; });
+    	.style('display', (d) => { return ['', 'Pending response from claimant'].indexOf(d) != -1 ? 'none' : null; });
+
+    let itemTags = d3.map(data, (d) => { return d.itemCategory; });//.keys();
+    let itemSet = new Set();
+    for (let tags in itemTags) {
+    	let tag = tags.substring(tags.indexOf('$') == -1 ? tags.indexOf(' ') : tags.indexOf('$') + 1, tags.indexOf(' '));
+    	itemSet.add(tag.trim());
+    }
+    let itemArray = [];
+    itemSet.forEach((tag) => {
+    	if (tag.indexOf(';') == -1 && tag.indexOf(',') == -1 && tag.indexOf('$') == -1 && tag != '')
+    		itemArray.push(tag);
+    });
+
+    d3.select('#itemFilter').selectAll('option')
+    	.data(itemArray)
+    	.enter()
+    	.append('option')
+    	.text((d) => { return d; })
+    	.attr('value', (d) => { return d; });
 }
 
 let showInfo = (datum) => {
@@ -246,6 +319,42 @@ let showInfo = (datum) => {
 	infoBox.css('display', 'block');
 }
 
-let hideInfo = () => {
+let hideInfo = (datum) => {
 	infoBox.css('display', 'none');
 }
+
+let loadData = () => {
+	d3.csv('data/tsa-claims-2002-2015.csv', (data) => {
+		dataset = data;
+
+		initializeDropdowns(data);
+		filter();
+	});
+}
+
+let prettyify = (num) => {
+	let numchars = (Math.round(num) + '').split('');
+	numchars.splice(1, 0, '.');
+	let numstring = '';
+	for (let i = 0; i < numchars.length; i++) {
+		numstring += numchars[i];
+	}
+	let numdot = parseInt(numstring);
+	numdot = Math.round(numdot);
+	numdot *= Math.pow(10, numchars.length - 2);
+	return numdot;
+}
+
+console.log(prettyify(32));
+
+// ======================================
+// Once Document is ready
+// ======================================
+$(() => {
+	$('select').on('change', () => {
+		filter();
+	});
+	makeMapProjection();
+	makeBar();
+	loadData();
+});
