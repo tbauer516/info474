@@ -143,18 +143,22 @@ let makeMapProjection = () => {
 }
 
 let makeMap = (data) => {
-	let mean = d3.mean(data, (d) => { return +d.value.avgCloseAmount; });
-	let std = d3.deviation(data, (d) => { return +d.value.avgCloseAmount; });
+	// let mean = d3.mean(data, (d) => { return +d.value.avgCloseAmount; });
+	// let std = d3.deviation(data, (d) => { return +d.value.avgCloseAmount; });
 
-	let domainArr = [prettyify(mean - (.13 * std)), prettyify(mean - (.1 * std)), prettyify(mean + (.001 * std)), prettyify(mean + (.15 * std))];
+	// let minmax = [0, d3.max(data, (d) => { return +d.value.avgCloseAmount; })];
+
+	// let domainArr = equalInterval(minmax[0], minmax[1], 5, 500);
+
+	let quan = d3.scaleQuantile()
+		.domain(data.map((d) => { return +d.value.avgCloseAmount; }))
+		.range(['#0571b0', '#92c5de', '#f7f7f7', '#f4a582', '#ca0020']);
+
+	let colorDomain = prettyDomain(quan.quantiles());
 
 	let color = d3.scaleThreshold()
-		// .domain([mean - .5 * std, mean - .1 * std, mean + .1 * std, mean + .5 * std])
-		.domain(domainArr)
-		// .domain([mean - (1.65 * std), mean - (.39 * std), mean + (.39 * std), mean + (1.65 * std)])
-		// .domain([mean - (1.28 * std), mean - (.26 * std), mean + (.26 * std), mean + (1.28 * std)])
-		.range(['#0571b0', '#92c5de', '#f7f7f7', '#f4a582', '#ca0020'])
-
+		.domain(colorDomain)
+		.range(quan.range());
 
 	let circle = svgRight.selectAll('circle')
 		.data(data);
@@ -218,7 +222,7 @@ let makeMap = (data) => {
 		.attr('x', (d, i) => { return (i + 1) * rectInfo.width - 10 + i * 10; })
 		.attr('y', (d) => { return rectInfo.height; })
 		.attr('dy', 14)
-		.text((d, i) => { return Math.round(+threshes[i]); })
+		.text((d, i) => { return threshes[i]; })
 }
 
 let aggregateData = (data) => {
@@ -332,20 +336,32 @@ let loadData = () => {
 	});
 }
 
-let prettyify = (num) => {
-	let numchars = (Math.round(num) + '').split('');
-	numchars.splice(1, 0, '.');
-	let numstring = '';
-	for (let i = 0; i < numchars.length; i++) {
-		numstring += numchars[i];
+let prettyDomain = (dom) => {
+	for (let i = 0; i < dom.length; i++) {
+		dom[i] = Math.round(dom[i]) + '';
 	}
-	let numdot = parseInt(numstring);
-	numdot = Math.round(numdot);
-	numdot *= Math.pow(10, numchars.length - 2);
-	return numdot;
-}
 
-console.log(prettyify(32));
+	let magDiff = dom[dom.length - 1].length - dom[0].length;
+
+	for (let i = 0; i < dom.length; i++) {
+		let moveDiff = magDiff - (dom[dom.length - 1].length - dom[i].length);
+		let tempStr = dom[i].split('');
+		tempStr.splice(moveDiff, 0, '.');
+		tempStr = tempStr.join('');
+		let left = parseInt(tempStr.substring(0, tempStr.indexOf('.'))) || 0;
+		let right = parseFloat(tempStr.substring(tempStr.indexOf('.'), tempStr.length));
+		if (right < 0.25)
+			right = 0;
+		else if (right > 0.75) {
+			right = 0;
+			left++;
+		} else
+			right = 0.5;
+
+		dom[i] =  (left + right) * Math.pow(10, tempStr.length - 1 - moveDiff);
+	}
+	return dom;
+}
 
 // ======================================
 // Once Document is ready
