@@ -20,6 +20,10 @@ circle:hover {
 	r: 9;
 }
 
+g.xAxis g.tick text {
+	transform: rotate(-45deg) translate(-60px, 0px);
+}
+
 #header {
 	width: 100%;
 	text-align: center;
