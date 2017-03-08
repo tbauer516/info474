@@ -108,6 +108,8 @@ let makeBar = (dataset) => {
 		.attr('height', 0)//(d) => { return gHeight - y(d.value[columnName]); })
 		.attr('y', gHeight)//(d) => { return gHeight -(gHeight - y(d.value[columnName])); });
 	.merge(rect)
+		.on('mouseover', showBarInfo)
+		.on('mouseout', hideInfo)
 		.transition(trans)
 		.attr('height', (d) => { return gHeight - y(d.value[columnName]); })
 		.attr('y', (d) => { return gHeight -(gHeight - y(d.value[columnName])); });
@@ -155,10 +157,42 @@ let makeMap = (data) => {
 		.range(['#0571b0', '#92c5de', '#f7f7f7', '#f4a582', '#ca0020']);
 
 	let colorDomain = prettyDomain(quan.quantiles());
+	for (let i = colorDomain.length - 1; i >= 0; i--) {
+		if (colorDomain.indexOf(colorDomain[i]) !== i || colorDomain[i] === 0) {
+			colorDomain.splice(i, 1);
+		}
+	}
+
+	let colorRange = quan.range();
+	if (colorRange.length - colorDomain.length > 1) {
+		switch(colorRange.length - colorDomain.length) {
+			case 2:
+				colorRange.splice(0, 1);
+				break;
+			case 3:
+				colorRange.splice(0, 1);
+				colorRange.splice(colorRange.length - 1, 1);
+				break;
+			case 4:
+				colorRange.splice(0, 2);
+				colorRange.splice(colorRange.length - 1, 1);
+				break;
+			case 5:
+				colorRange.splice(0, 2);
+				colorRange.splice(colorRange.length - 2, 2);
+				break;
+		}
+	}
+
+	if (data.length == 0) {
+		colorDomain = [];
+		// colorRange = [quan.range()[Math.ceil(quan.range().length / 2 - 1)]];
+		colorRange = [];
+	}
 
 	let color = d3.scaleThreshold()
 		.domain(colorDomain)
-		.range(quan.range());
+		.range(colorRange);
 
 	let circle = svgRight.selectAll('circle')
 		.data(data);
@@ -196,13 +230,37 @@ let makeMap = (data) => {
 	let threshes = color.domain();
 	let rectInfo = { width: 30, height: 30 };
 
-	let group = svgRight.select('g.legend')
-		.attr('transform', 'translate(' + (svgWidth - (colors.length * rectInfo.width * 1.85)) + ', 0)');
+	if (data.length == 0)
+		threshes = ['none'];
 
-	group
+	let group = svgRight.select('g.legend')
+		.attr('transform', 'translate(' + (svgWidth - (/*colors.length*/5 * rectInfo.width * 1.85)) + ', 0)');
+
+	let desc = ['Average Amount to Close:'];
+
+	let descText = group
+		.selectAll('text')
+		.data(desc);
+	descText
+		.enter()
+		.append('text')
+		.attr('class', 'descTitle')
+		.merge(descText)
+		.attr('x', 0)
+		.attr('y', -20)
+		.attr('dy', 14)
+		.text((d, i) => { return desc[i]; });
+
+	let legendRect = group
 		.selectAll('rect')
-		.data(colors)
-		.enter().append('rect')
+		.data(colors);
+
+	legendRect.exit().remove();
+
+	legendRect
+		.enter()
+		.append('rect')
+		.merge(legendRect)
 		.attr('x', (d, i) => { return i * rectInfo.width + i * 10; })
 		.attr('y', 	0)
 		.attr('fill', (d, i) => { return colors[i]; })
@@ -210,7 +268,7 @@ let makeMap = (data) => {
 		.attr('height', rectInfo.height);
 
 	let legendText = group
-		.selectAll('text')
+		.selectAll('text.legendText')
 		.data(threshes);
 
 	legendText.exit().remove();
@@ -218,11 +276,12 @@ let makeMap = (data) => {
 	legendText
 		.enter()
 		.append('text')
+		.attr('class', 'legendText')
 		.merge(legendText)
 		.attr('x', (d, i) => { return (i + 1) * rectInfo.width - 10 + i * 10; })
 		.attr('y', (d) => { return rectInfo.height; })
 		.attr('dy', 14)
-		.text((d, i) => { return threshes[i]; })
+		.text((d, i) => { return threshes[i]; });
 }
 
 let aggregateData = (data) => {
@@ -253,6 +312,12 @@ let aggregateData = (data) => {
 					}),
 				'avgCloseAmount': d3.mean(leaves, (d) => {
 						return +d.closeAmount;
+					}),
+				'maxAmount': d3.max(leaves, (d) => {
+						return +d.closeAmount;
+					}),
+				'minAmount': d3.min(leaves, (d) => {
+						return +d.closeAmount;
 					})
 			}
 		})
@@ -272,6 +337,8 @@ let filter = () => {
 	let itemFilter = $('#itemFilter').val();
 	if (itemFilter != 'all')
 		localData = localData.filter((d) => { return d.itemCategory.indexOf(itemFilter) != -1; });
+	let dateFilter = [$('#yearSlider').slider( "values", 0), $('#yearSlider').slider( "values", 1)];
+	localData = localData.filter((d) => { let date = new Date(d.incidentDate).getTime(); return date >= dateFilter[0] && date <= dateFilter[1] });
 
 	aggregateData(localData);
 	makeBar(airline);
@@ -315,10 +382,23 @@ let initializeDropdowns = (data) => {
     	.attr('value', (d) => { return d; });
 }
 
+let showBarInfo = (datum) => {
+	let divs = infoBox.find('div');
+	console.log(datum);
+	divs.eq(0).html('Avg: $' + Math.round(datum.value.avgCloseAmount));
+	divs.eq(1).html('Sum: $' + Math.round(datum.value.closeAmount));
+	divs.eq(2).html('Max: $' + Math.round(datum.value.maxAmount));
+	divs.eq(3).html('Min: $' + Math.round(datum.value.minAmount));
+
+	infoBox.css('display', 'block');
+}
+
 let showInfo = (datum) => {
-	infoBox.find('.airportName').html(datum.key);
-	infoBox.find('.airportAmount').html('$' + Math.round(+datum.value.avgCloseAmount));
-	infoBox.find('.airportLocation').html(datum.value.longitude + '&deg; N, ' + datum.value.latitude + '&deg; E');
+	let divs = infoBox.find('div');
+	divs.eq(0).html(datum.key);
+	divs.eq(1).html('Avg: $' + Math.round(+datum.value.avgCloseAmount));
+	divs.eq(2).html('Lat: ' + datum.value.latitude + '&deg; E');
+	divs.eq(3).html('Lng: ' + datum.value.longitude + '&deg; N');
 
 	infoBox.css('display', 'block');
 }
@@ -332,6 +412,26 @@ let loadData = () => {
 		dataset = data;
 
 		initializeDropdowns(data);
+
+		let min = d3.min(data, (d) => { return new Date(d.incidentDate).getTime(); });
+		min = new Date('1/8/2002').getTime();
+		let max = d3.max(data, (d) => { return new Date(d.incidentDate).getTime(); });
+
+		$('#yearSlider').slider({
+			range: true,
+			min: min,
+			max: max,
+			values: [ min, max ],
+			slide: function( event, ui ) {
+				$( "#amount" ).val( new Date(ui.values[ 0 ]).toISOString().split('T')[0] +
+				 " —— " + new Date(ui.values[ 1 ]).toISOString().split('T')[0] );
+			},
+			stop: (event, ui) => {
+				filter();
+			}
+		});
+		$( "#amount" ).val( new Date(min).toISOString().split('T')[0] + " —— " + new Date(max).toISOString().split('T')[0] );
+
 		filter();
 	});
 }

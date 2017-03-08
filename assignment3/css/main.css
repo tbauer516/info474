@@ -29,10 +29,26 @@ g.xAxis g.tick text {
 	text-align: center;
 }
 
+#header p {
+	margin: 0;
+}
+
+#header h1 {
+	margin-bottom: 10px;
+}
+
 #hud {
 	flex: 0 0 15%;
 	border: 2px solid black;
 	padding: 10px;
+}
+
+#hud p {
+	margin: 0 0 5px 0;
+}
+
+#slider-wrapper {
+	margin: 0 15px 0 15px;
 }
 
 input, label, select {
@@ -80,8 +96,9 @@ svg {
 	height: 500px;*/
 }
 
-.svg-left {
-
+.svg-left rect:hover, .svg-left rect:focus {
+	fill: #800000;
+	stroke-width: 2px;
 }
 
 .svg-wrapper {
